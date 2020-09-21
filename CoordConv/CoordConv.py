@@ -19,7 +19,7 @@ def addCoordLayers(x):
     return np.concatenate([x,new], axis=-1)
 
 class CoordNet(Network):    
-    def __init__(self, input_shape):
+    def __init__(self, input_shape):#assume coordlayers are added before  
         super().__init__()
 
         self.dirpath = 'records_z/'
@@ -45,7 +45,7 @@ class CoordNet(Network):
             input_shape=self.input_shape)
         base_model.trainable = True
         x = base_model(x, training=True)
-        x = layers.GlabelAveragePooling2D()(x)
+        x = layers.GlobalAveragePooling2D()(x)
 
         x = layers.Dense(256,activation=layers.LeakyReLU(alpha=0.1))(x)
         x = layers.Dropout(0.5)(x)
