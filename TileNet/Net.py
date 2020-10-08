@@ -73,7 +73,8 @@ class Network():
         x = layers.Dropout(0.3)(x)
         x = layers.Dense(64, activation=layers.LeakyReLU(alpha=0.1))(x)
         x = layers.Dropout(0.3)(x)
-        x = layers.Dense(1)(x)
+        
+        x = layers.Dense(2)(x)
         return x
 
     def tf_resnet(self,x):
@@ -86,7 +87,10 @@ class Network():
         x = layers.Dropout(0.3)(x)
         x = layers.Dense(64, activation=layers.LeakyReLU(alpha=0.1))(x)
         x = layers.Dropout(0.3)(x)
-        x = layers.Dense(1)(x)
+        
+        x0 = layers.Dense(1, activation='sigmoid')(x)#confidence that decides which cell is used
+        x1 = layers.Dense(1)(x)
+        x = layers.concatenate([x0,x1])#first is 'confidence', second is z
         return x
 
     def thismodel(self,x,net):
@@ -95,10 +99,15 @@ class Network():
        
         predT = [net(patch) for patch in tilesT]
         pred = tf.transpose(predT,[1,0,2])
+        
+        idx = tf.math.argmax(pred[:,:,0],axis=1)#maximum of confidence
+        
+        #vals = [pred[i,j,1] for i,j in enumerate(idx)]
+        n=tf.shape(x)[0]
+        full_idx = tf.stack([tf.range(n, dtype=tf.int64),idx,tf.ones(n, dtype=tf.int64)],axis=1)
+        vals = tf.gather_nd(pred,full_idx)
 
-        pred = tf.reduce_max(pred,axis=1)
-        pred = K.flatten(pred)
-        return pred
+        return vals
         
     def reset(self):
         self.curr_epoch = 0
