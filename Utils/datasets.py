@@ -1,8 +1,9 @@
 import warnings 
 warnings.filterwarnings('ignore')
 
+import sys
 import numpy as np
-import tensorflow as tf
+import pickle
 
 from sklearn.model_selection import train_test_split
 from skimage import transform
@@ -10,35 +11,6 @@ from scipy.ndimage.filters import gaussian_filter
 
 seed = 0
 np.random.seed(seed)
-
-def get_mnist():
-    try:
-        from tensorflow.keras.datasets import mnist
-    
-        img_rows, img_cols = 28, 28
-        num_classes = 10
-
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-        x = np.concatenate((x_train, x_test))
-        y = np.concatenate((y_train, y_test), axis=0 )
-
-        #if K.image_data_format() == 'channels_first':
-        #    x = x.reshape(x.shape[0], 1, img_rows, img_cols)
-        #    shape = (1, img_rows, img_cols)
-        x = x.reshape(x.shape[0], img_rows, img_cols, 1)
-        x = np.pad(x, ((0,0),(2,2),(2,2),(0,0)), 'constant')
-        shape = (32, 32, 1)
-
-        x = x.astype('float32')
-        x /= 255
-
-        y = tf.keras.utils.to_categorical(y, num_classes)
-
-        return x, y, shape, num_classes
-    except:
-        print("Could not generate MNIST data")
-
 
 def get_z_dataset(N = 1000, sigma=False):
     try:
@@ -66,71 +38,91 @@ def get_z_dataset(N = 1000, sigma=False):
 
 def load_z_dataset():
     try:
-        import pickle
-        import sys
-        img, params = pickle.load(open("../Data/databig.pickle","rb"))
-        out_size = 1
-        """ 
-        idx = [i for i, params in enumerate(params) if params > 3.5]
-        img = np.delete(img, idx,axis=0)
-        params = np.delete(params, idx)
-        
-        idx = [i for i, params in enumerate(params) if params < 0.5]
-        img = np.delete(img, idx,axis=0)
-        params = np.delete(params, idx)
+        img, z, _, _, _ = pickle.load(open("../Data/data_coord.pickle","rb"))
+        #img, z = pickle.load(open("../Data/databig.pickle","rb"))
 
-        n, bin_edges = np.histogram(params,20)
-        idxs = np.digitize(params, bin_edges)-1
+        out_size = 1
+        
+        idx = [i for i, z in enumerate(z) if z > 3.5]
+        img = np.delete(img, idx,axis=0)
+        z = np.delete(z, idx)
+        
+        idx = [i for i, z in enumerate(z) if z < 0.5]
+        img = np.delete(img, idx,axis=0)
+        z = np.delete(z, idx)
+
+        n, bin_edges = np.histogram(z,20)
+        idxs = np.digitize(z, bin_edges)-1
         new_imgs = [] 
-        new_params = []
+        new_z = []
         for j in range(len(n)):
             idx = [ix for ix, i in enumerate(idxs) if i==j]
             if n[j] > 500:
                 idx = np.random.choice(idx, 500, replace=False)
                 new_imgs.append(img[idx,:,:,:])
-                new_params.append(params[idx])
+                new_z.append(z[idx])
             else:
                 idx = np.hstack([idx, np.random.choice(idx,500-n[j])])
                 new_imgs.append(img[idx,:,:,:])
-                new_params.append(params[idx])
+                new_z.append(z[idx])
                  
         img = [item for sublist in new_imgs for item in sublist]
         img = np.array(img)
-        params = [item for sublist in new_params for item in sublist]
-        params = np.array(params)
-        """
-        return img, params, np.shape(img[0]), out_size 
+        z = [item for sublist in new_z for item in sublist]
+        z = np.array(z)
+        
+        return img, z, np.shape(img[0]), out_size 
     
     except:
         print("Could not load galaxy data")
+
+class Scaler():
+    def __init__(self, dims):
+        self.dims = dims
+        self.x_min = np.zeros(self.dims)
+        self.x_max = np.zeros(self.dims)
+        self.y_min = 0
+        self.y_max = 0
+
+    def minmax_img(self, x, bychannels=True):
+        if bychannels:
+            for i in range(self.dims):
+                self.x_min[i] = np.min(x[:,:,:,i])
+                self.x_max[i] = np.max(x[:,:,:,i])
+                x[:,:,:,i] = (x[:,:,:,i] - self.x_min[i])/(self.x_max[i] - self.x_min[i])
+        else:
+            self.x_min[0] = np.min(x)
+            self.x_max[0] = np.max(x)
+            x = (x-self.x_min[0])/(self.x_max[0]-self.x_min[0])
+        return x
+
+    def arcsinh(self, x):
+        return np.arcsinh(x)
+
+    def minmax_z(self,y):
+        self.y_min = np.min(y)
+        self.y_max = np.max(y)
+        y = (y-self.y_min)/(self.y_max-self.y_min)
+        return y
 
 class Loader():
     def __init__(self, test_per, dat):
         
         self.datasets = {
-            "MNIST": get_mnist(),
             "get_z": get_z_dataset(),
             "load_z": load_z_dataset()}
 
         x, y, self.shape, self.num_out = self.datasets[dat]
-        
-        dims = self.shape[-1]
-        self.x_min = np.zeros(dims)
-        self.x_max = np.zeros(dims)
-        #TODO can probably remove the loop
-        for i in range(dims):
-            self.x_min[i] = np.min(x[:,:,:,i])
-            self.x_max[i] = np.max(x[:,:,:,i])
-            x[:,:,:,i] = (x[:,:,:,i] - self.x_min[i])/(self.x_max[i] - self.x_min[i])
-        
-        if dat != "MNIST":
-            self.y_min = np.min(y)
-            self.y_max = np.max(y)
-            y = (y-self.y_min)/(self.y_max-self.y_min)
+
+        self.dims = self.shape[-1]
+        self.scaler = Scaler(self.dims)
+        #x_scaled = self.scaler.arcsinh(x)
+        #x_scaled = self.scaler.minmax_img(x_scaled)
+        y_scaled = self.scaler.minmax_z(y)
 
         self.test_per = test_per
         self.x_train, self.x_test, self.y_train, self.y_test = \
-            train_test_split(x,y, test_size=self.test_per, random_state=seed)
+            train_test_split(x,y_scaled, test_size=self.test_per, random_state=seed)
                     
         self.reset()
 
