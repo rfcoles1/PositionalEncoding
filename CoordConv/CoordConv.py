@@ -4,20 +4,6 @@ sys.path.insert(1, '../Utils')
 from metrics import *
 from datasets import *
 
-
-def addCoordLayers(x):
-    new_dims = np.append(np.shape(x)[:-1],2)
-    new = np.zeros(new_dims)
-
-    dim1 = np.shape(x)[1]
-    for i in range(dim1):
-        new[:,i,:,0] = i/dim1
-    dim2 = np.shape(x)[2]
-    for j in range(dim2):
-        new[:,:,j,1] = j/dim2
-
-    return np.concatenate([x,new], axis=-1)
-
 class CoordNet(Network):    
     def __init__(self, input_shape):#assume coordlayers are added before  
         super().__init__()
@@ -62,7 +48,7 @@ class CoordNet(Network):
             epochs=epochs,
             verbose=verbose,
             validation_data=(x_test, y_test),
-            callbacks=[batch_hist, self.es])
+            callbacks=[batch_hist])
 
         epochs_arr = np.arange(self.curr_epoch)
         iterations = np.ceil(np.shape(x_train)[0]/self.batch_size)
