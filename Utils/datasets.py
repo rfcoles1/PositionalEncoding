@@ -6,43 +6,20 @@ import numpy as np
 import pickle
 
 from sklearn.model_selection import train_test_split
-from skimage import transform
 from scipy.ndimage.filters import gaussian_filter
+
+from coordlayers import *
 
 seed = 0
 np.random.seed(seed)
 
-def get_z_dataset(N = 1000, sigma=False):
-    try:
-        from dynamicDataLoader import Dynamic_dataloader_subaru_params
-
-        dataset_loader = torch.utils.data.DataLoader(Dynamic_dataloader_subaru_params(\
-            transforms.Normalize(mean=(0.0598,0.0123,0.0207,0.0311,0.0403),\
-            std=(1.01,0.0909,0.193,0.357,0.552)),cut_size=16), \
-            batch_size=N, shuffle=True, num_workers=1, pin_memory=True)
-
-        img,z,sigma = next(iter(dataset_loader))
-        img = np.transpose(img.numpy(),(0,3,1,2))
-    
-        if sigma:
-            params = np.hstack([z.numpy(), sigma.numpy()])
-            out_size = 2
-        else:
-            params = z.numpy()
-            out_size = 1
-
-        return img, params, np.shape(img[0]), out_size
-    except:
-        print("Could not generate galaxy data")
-
-
 def load_z_dataset():
     try:
-        img, z, _, _, _ = pickle.load(open("../Data/data_coord.pickle","rb"))
-        #img, z = pickle.load(open("../Data/databig.pickle","rb"))
+        img, z, _, ra, dec = pickle.load(open("../Data/data_32_radeclayers.pickle","rb"))
 
         out_size = 1
         
+        """
         idx = [i for i, z in enumerate(z) if z > 3.5]
         img = np.delete(img, idx,axis=0)
         z = np.delete(z, idx)
@@ -70,8 +47,9 @@ def load_z_dataset():
         img = np.array(img)
         z = [item for sublist in new_z for item in sublist]
         z = np.array(z)
-        
-        return img, z, np.shape(img[0]), out_size 
+        """
+
+        return img, z, ra, dec, np.shape(img[0]), out_size 
     
     except:
         print("Could not load galaxy data")
@@ -106,19 +84,23 @@ class Scaler():
         return y
 
 class Loader():
-    def __init__(self, test_per, dat):
+    def __init__(self, test_per, added_layers=None, dat='load_z'):
         
         self.datasets = {
-            "get_z": get_z_dataset(),
             "load_z": load_z_dataset()}
 
-        x, y, self.shape, self.num_out = self.datasets[dat]
+        x, y, ra, dec, self.shape, self.num_out = self.datasets[dat]
 
         self.dims = self.shape[-1]
         self.scaler = Scaler(self.dims)
         #x_scaled = self.scaler.arcsinh(x)
         #x_scaled = self.scaler.minmax_img(x_scaled)
         y_scaled = self.scaler.minmax_z(y)
+
+        if added_layers=='xy':
+            x = addCoordLayers(x)
+        if added_layers=='radec':
+            x = catCoordLayers(x,ra,dec) 
 
         self.test_per = test_per
         self.x_train, self.x_test, self.y_train, self.y_test = \
